@@ -321,7 +321,8 @@ describe("Admin pages", () => {
     await user.click(
       await screen.findByRole("button", { name: "Xem và duyệt" }),
     );
-    const dialog = screen.getByRole("dialog");
+    await user.click(await screen.findByRole("button", { name: "Duyệt giấy tờ Căn cước công dân" }));
+    const dialog = await screen.findByRole("form", { name: "Duyệt Căn cước công dân · #51" });
     await user.click(within(dialog).getByRole("combobox"));
     await user.click(
       await screen.findByText("Từ chối", {
@@ -344,11 +345,13 @@ describe("Admin pages", () => {
   });
   it("shows missing-document errors when approving a driver", async () => {
     verificationConflict = true;
+    driver.driver.verificationStatus = "PENDING";
     const { user } = renderPage("/drivers/41");
     await user.click(
-      await screen.findByRole("button", { name: "Duyệt tài khoản" }),
+      await screen.findByRole("button", { name: "Xem và duyệt hồ sơ" }),
     );
-    await user.click(screen.getByRole("button", { name: "Lưu quyết định" }));
+    const dossier = await screen.findByRole("dialog", { name: /Duyệt hồ sơ tài xế/ });
+    await user.click(within(dossier).getByRole("button", { name: "Duyệt tài khoản" }));
     await waitFor(() =>
       expect(
         screen.getAllByText("Chưa duyệt đủ giấy tờ bắt buộc: DRIVER_LICENSE")
@@ -357,11 +360,14 @@ describe("Admin pages", () => {
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-  it("confirms skill verification and force offline independently", async () => {
+  it("verifies skills in the shared review window and confirms force offline", async () => {
     const { user } = renderPage("/drivers/41?tab=skills");
-    await user.click(await screen.findByRole("button", { name: "Xác minh" }));
-    await user.click(await screen.findByRole("button", { name: "Xác nhận" }));
+    await user.click(await screen.findByRole("button", { name: "Xem và duyệt hồ sơ" }));
+    const dossier = await screen.findByRole("dialog", { name: /Duyệt hồ sơ tài xế/ });
+    await user.click(await within(dossier).findByRole("button", { name: "Xác minh kỹ năng Ô tô · Số tự động · B2" }));
     await waitFor(() => expect(driver.skills[0].verified).toBe(true));
+    await waitFor(() => expect(within(dossier).getByRole("button", { name: "Đóng hồ sơ" })).toBeEnabled());
+    await user.click(within(dossier).getByRole("button", { name: "Đóng hồ sơ" }));
     await user.click(screen.getByRole("button", { name: "Ép offline" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(

@@ -404,6 +404,12 @@ input {
   color: #777;
   font-size: 13px;
 }
+.driver-review-form {
+  margin-top: 12px;
+}
+.driver-review-form .ant-form-item {
+  margin-bottom: 12px;
+}
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

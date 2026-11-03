@@ -2,14 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
-  Alert,
   App,
   Button,
   Descriptions,
-  Form,
   Input,
-  Modal,
   Select,
+  Space,
   Table,
   Tabs,
   Tag,
@@ -31,7 +29,9 @@ import {
   Refresh,
   Status,
 } from "../components/common";
-import type { Driver, DriverDocument, DocumentQueue, Skill } from "../types";
+import type { Driver, Skill } from "../types";
+import { loadDocumentApplications, type DriverApplication } from "./documentApplications";
+import { DriverDocumentsDrawer } from "./DriverDocumentsDrawer";
 
 const verificationOptions = [
   "PENDING",
@@ -159,105 +159,27 @@ export function Drivers() {
   );
 }
 
-export function DocumentReview({
-  document,
-  onClose,
-}: {
-  document: DriverDocument;
-  onClose: () => void;
-}) {
-  const [form] = Form.useForm<{ status: string; rejectionReason?: string }>();
-  const status = Form.useWatch("status", form);
-  const mutation = useAction(
-    (values: { status: string; rejectionReason?: string }) =>
-      api.review(
-        document.id,
-        values.status,
-        values.status === "REJECTED"
-          ? values.rejectionReason?.trim()
-          : undefined,
-      ),
-    onClose,
-  );
-  return (
-    <Modal
-      open
-      title={`Duyệt ${label(document.documentType)} · #${document.id}`}
-      onCancel={() => {
-        if (!mutation.isPending) onClose();
-      }}
-      okText="Lưu kết quả"
-      cancelText="Đóng"
-      confirmLoading={mutation.isPending}
-      cancelButtonProps={{ disabled: mutation.isPending }}
-      onOk={() => form.submit()}
-    >
-      <div className="document-card">
-        <Photo url={document.secureUrl} alt={label(document.documentType)} />
-        <div>
-          <p>{text(document.documentNumber)}</p>
-          <p className="muted">Hết hạn: {date(document.expiresAt)}</p>
-          <Status value={document.verificationStatus} />
-        </div>
-      </div>
-      <QueryError error={mutation.error} retry={() => mutation.reset()} />
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{ status: "APPROVED" }}
-        onFinish={(values) => {
-          if (!mutation.isPending) mutation.mutate(values);
-        }}
-      >
-        <Form.Item
-          label="Kết quả duyệt"
-          name="status"
-          rules={[{ required: true }]}
-        >
-          <Select
-            options={["APPROVED", "REJECTED"].map((value) => ({
-              value,
-              label: label(value),
-            }))}
-          />
-        </Form.Item>
-        <Form.Item
-          label="Lý do từ chối"
-          name="rejectionReason"
-          rules={[
-            {
-              required: status === "REJECTED",
-              whitespace: true,
-              message: "Nhập lý do từ chối giấy tờ.",
-            },
-            { max: 1000 },
-          ]}
-        >
-          <Input.TextArea rows={3} maxLength={1000} showCount />
-        </Form.Item>
-      </Form>
-    </Modal>
-  );
-}
-
 export function Documents() {
   const f = useFilters();
-  const [document, setDocument] = useState<DriverDocument>();
+  const [application, setApplication] = useState<DriverApplication>();
   const status = f.read("status", "PENDING");
   const query = useQuery({
-    queryKey: ["admin", "documents", status, f.page, f.size],
-    queryFn: () => api.documents({ ...f.params, status }),
+    queryKey: ["admin", "documents", "applications", status],
+    queryFn: () => loadDocumentApplications(status),
   });
-  const columns: ColumnsType<DocumentQueue & { id: number }> = [
+  const applications = query.data ?? [];
+  const totalPages = Math.ceil(applications.length / f.size);
+  const page = Math.min(f.page, Math.max(0, totalPages - 1));
+  const columns: ColumnsType<DriverApplication> = [
     {
       title: "Tài xế",
       width: 200,
       render: (_, row) => (
         <>
-          <Link to={`/drivers/${row.document.driverId}`}>
-            {row.driverName || `Tài xế #${row.document.driverId}`}
+          <Link to={`/drivers/${row.id}`}>
+            {row.driverName || `Tài xế #${row.id}`}
           </Link>
-          <div className="muted">{row.driverPhone}</div>
+          <div className="muted">#{row.id} · {row.driverPhone}</div>
         </>
       ),
     },
@@ -265,30 +187,22 @@ export function Documents() {
       title: "Giấy tờ",
       render: (_, row) => (
         <>
-          {label(row.document.documentType)}
-          <div className="muted">{text(row.document.documentNumber)}</div>
+          <Typography.Paragraph>{row.documents.length} giấy tờ</Typography.Paragraph>
+          <Space size={[0, 8]} wrap>
+            {row.documents.map(doc => <Tag key={doc.id}>{label(doc.documentType)}</Tag>)}
+          </Space>
         </>
       ),
     },
     {
-      title: "Ảnh",
-      render: (_, row) => (
-        <Photo
-          url={row.document.secureUrl}
-          alt={label(row.document.documentType)}
-        />
-      ),
+      title: "Trạng thái xử lý",
+      render: (_, row) => row.waitingForAccount ? <Tag color="gold">Chờ duyệt tài khoản</Tag> : <Status value={status} />,
     },
-    {
-      title: "Trạng thái",
-      render: (_, row) => <Status value={row.document.verificationStatus} />,
-    },
-    { title: "Ngày gửi", render: (_, row) => date(row.document.createdAt) },
-    { title: "Hết hạn", render: (_, row) => date(row.document.expiresAt) },
+    { title: "Ngày gửi", render: (_, row) => date(row.createdAt) },
     {
       title: "Thao tác",
       render: (_, row) => (
-        <Button size="small" onClick={() => setDocument(row.document)}>
+        <Button size="small" onClick={() => setApplication(row)}>
           Xem và duyệt
         </Button>
       ),
@@ -298,7 +212,7 @@ export function Documents() {
     <>
       <Heading
         title="Duyệt hồ sơ tài xế"
-        subtitle="Kiểm tra từng giấy tờ trước khi duyệt tài khoản tài xế."
+        subtitle="Mỗi tài xế một hồ sơ. Kiểm tra giấy tờ, kỹ năng và duyệt tài khoản trong cùng cửa sổ."
         actions={
           <Refresh
             loading={query.isFetching}
@@ -308,7 +222,7 @@ export function Documents() {
       />
       <div className="filters">
         <Select
-          aria-label="Trạng thái giấy tờ"
+          aria-label="Trạng thái xử lý hồ sơ"
           value={status}
           options={["PENDING", "APPROVED", "REJECTED"].map((value) => ({
             value,
@@ -323,24 +237,25 @@ export function Documents() {
           data={
             query.data
               ? {
-                  ...query.data,
-                  content: query.data.content.map((row) => ({
-                    ...row,
-                    id: row.document.id,
-                  })),
+                  content: applications.slice(page * f.size, (page + 1) * f.size),
+                  page,
+                  size: f.size,
+                  totalElements: applications.length,
+                  totalPages,
+                  hasNext: page + 1 < totalPages,
                 }
               : undefined
           }
           columns={columns}
           loading={query.isPending}
           onPage={(page, size) => f.update({ page, size }, false)}
-          scroll={1050}
+          scroll={900}
         />
       </Panel>
-      {document && (
-        <DocumentReview
-          document={document}
-          onClose={() => setDocument(undefined)}
+      {application && (
+        <DriverDocumentsDrawer
+          application={application}
+          onClose={() => setApplication(undefined)}
         />
       )}
     </>
@@ -353,23 +268,13 @@ export function DriverDetailPage() {
   const location = useLocation();
   const f = useFilters();
   const { modal } = App.useApp();
-  const [review, setReview] = useState<DriverDocument>();
-  const [verification, setVerification] = useState(false);
-  const [form] = Form.useForm<{ status: string; rejectionReason?: string }>();
+  const [review, setReview] = useState<number | null>();
   const query = useQuery({
     queryKey: ["admin", "driver", id],
     queryFn: () => api.driver(id),
     enabled: valid,
   });
-  const skill = useAction((v: { id: number; verified: boolean }) =>
-    api.verifySkill(v.id, v.verified),
-  );
   const offline = useAction<void>(() => api.offline(id));
-  const verify = useAction(
-    (v: { status: string; rejectionReason?: string }) =>
-      api.verifyDriver(id, v.status, v.rejectionReason?.trim()),
-    () => setVerification(false),
-  );
   if (!valid) return <InvalidRecord />;
   if (query.isPending) return <Loading />;
   if (!query.data)
@@ -392,24 +297,12 @@ export function DriverDetailPage() {
     },
     {
       title: "Thao tác",
-      render: (_, row) => (
+      render: () => (
         <Button
           size="small"
-          disabled={skill.isPending}
-          onClick={() =>
-            modal.confirm({
-              title: row.verified
-                ? "Bỏ xác minh kỹ năng?"
-                : "Xác minh kỹ năng?",
-              content: `${label(row.vehicleType)} · ${label(row.transmission)} · ${text(row.licenseClass)}`,
-              okText: "Xác nhận",
-              cancelText: "Đóng",
-              onOk: () =>
-                skill.mutateAsync({ id: row.id, verified: !row.verified }),
-            })
-          }
+          onClick={() => setReview(null)}
         >
-          {row.verified ? "Bỏ xác minh" : "Xác minh"}
+          Xem và duyệt
         </Button>
       ),
     },
@@ -431,13 +324,9 @@ export function DriverDetailPage() {
             />
             <Button
               type="primary"
-              onClick={() => {
-                form.resetFields();
-                verify.reset();
-                setVerification(true);
-              }}
+              onClick={() => setReview(null)}
             >
-              Duyệt tài khoản
+              Xem và duyệt hồ sơ
             </Button>
             <Button
               danger
@@ -582,7 +471,7 @@ export function DriverDetailPage() {
                       <Button
                         size="small"
                         disabled={!doc.isCurrent}
-                        onClick={() => setReview(doc)}
+                        onClick={() => setReview(doc.id)}
                       >
                         Xem và duyệt
                       </Button>
@@ -614,60 +503,13 @@ export function DriverDetailPage() {
           },
         ]}
       />
-      {review && (
-        <DocumentReview
-          document={review}
+      {review !== undefined && (
+        <DriverDocumentsDrawer
+          application={{ id, driverName: driver.fullName, driverPhone: driver.phoneNumber }}
+          initialDocumentId={review ?? undefined}
           onClose={() => setReview(undefined)}
         />
       )}
-      <Modal
-        title="Quyết định xác minh tài xế"
-        open={verification}
-        onCancel={() => {
-          if (!verify.isPending) setVerification(false);
-        }}
-        onOk={() => form.submit()}
-        okText="Lưu quyết định"
-        cancelText="Đóng"
-        confirmLoading={verify.isPending}
-        cancelButtonProps={{ disabled: verify.isPending }}
-      >
-        <Alert
-          className="toolbar-note"
-          type="info"
-          showIcon
-          title="Tài khoản chỉ được duyệt khi đủ giấy tờ bắt buộc đã được duyệt."
-        />
-        <QueryError error={verify.error} retry={() => verify.reset()} />
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ status: "APPROVED" }}
-          onFinish={(v) => {
-            if (!verify.isPending) verify.mutate(v);
-          }}
-        >
-          <Form.Item
-            label="Trạng thái xác minh"
-            name="status"
-            rules={[{ required: true }]}
-          >
-            <Select
-              options={["APPROVED", "REJECTED"].map((value) => ({
-                value,
-                label: label(value),
-              }))}
-            />
-          </Form.Item>
-          <Form.Item
-            label="Lý do từ chối (nếu có)"
-            name="rejectionReason"
-            rules={[{ max: 1000 }]}
-          >
-            <Input.TextArea rows={3} maxLength={1000} showCount />
-          </Form.Item>
-        </Form>
-      </Modal>
     </>
   );
 }

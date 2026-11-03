@@ -57,6 +57,7 @@ export const labels: Record<string, string> = {
   PICKUP: "Nhận xe",
   DROPOFF: "Trả xe",
   AUTOMATIC: "Số tự động",
+  AUTO: "Số tự động",
   MANUAL: "Số sàn",
   CASH: "Tiền mặt",
   WALLET: "Ví",
@@ -67,7 +68,10 @@ export const labels: Record<string, string> = {
   RIGHT: "Bên phải",
   DASHBOARD: "Bảng điều khiển",
   CCCD: "Căn cước công dân",
+  CCCD_BACK: "Mặt sau CCCD",
+  SELFIE: "Ảnh chân dung",
   DRIVER_LICENSE: "Giấy phép lái xe",
+  DRIVER_LICENSE_BACK: "Mặt sau giấy phép lái xe",
 };
 export const text = (value: unknown) =>
   value === null || value === undefined || value === "" ? "—" : String(value);
